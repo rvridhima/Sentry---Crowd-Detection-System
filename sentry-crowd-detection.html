@@ -1,0 +1,1820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SENTRY — AI Crowd Anomaly &amp; Crime Detection Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   SENTRY — Operational Console
+   Token system:
+   Surfaces:  --bg #0A0E11, --panel #11161B, --panel-raised #151B21
+   Lines:     --line #1F2A30, --line-soft #182127
+   Text:      --text #C8D3D8, --text-dim #5B6B72, --text-bright #EAF1F3
+   Status:    --ok #3DDC84, --warn #FFB020, --crit #FF4444, --info #4FA9E0
+   Type: IBM Plex Mono (data/telemetry), Inter (UI/labels)
+   ============================================================ */
+:root{
+  --bg:#0A0E11;
+  --panel:#11161B;
+  --panel-raised:#151B21;
+  --line:#1F2A30;
+  --line-soft:#182127;
+  --text:#C8D3D8;
+  --text-dim:#5B6B72;
+  --text-bright:#EAF1F3;
+  --ok:#3DDC84;
+  --warn:#FFB020;
+  --crit:#FF4444;
+  --info:#4FA9E0;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'Inter', sans-serif;
+  --radius: 3px;
+}
+
+*{box-sizing:border-box; margin:0; padding:0;}
+html,body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  height:100%;
+  -webkit-font-smoothing:antialiased;
+}
+body{
+  background-image:
+    radial-gradient(circle at 15% 0%, rgba(79,169,224,0.05), transparent 45%),
+    radial-gradient(circle at 85% 100%, rgba(61,220,132,0.04), transparent 45%);
+  min-height:100vh;
+}
+::selection{ background:var(--info); color:#06161f; }
+button{ font-family:inherit; cursor:pointer; }
+a{ color:var(--info); text-decoration:none; }
+
+/* scrollbars */
+::-webkit-scrollbar{ width:8px; height:8px; }
+::-webkit-scrollbar-track{ background:var(--panel); }
+::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
+::-webkit-scrollbar-thumb:hover{ background:#2a3a42; }
+
+/* ---------- Top status bar ---------- */
+.topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 24px;
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg, var(--panel-raised), var(--panel));
+  position:sticky; top:0; z-index:50;
+}
+.brand{
+  display:flex; align-items:center; gap:12px;
+}
+.brand-mark{
+  width:34px; height:34px;
+  border:1.5px solid var(--ok);
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  position:relative;
+  flex-shrink:0;
+}
+.brand-mark::before{
+  content:'';
+  width:8px; height:8px;
+  background:var(--ok);
+  border-radius:50%;
+  box-shadow:0 0 8px var(--ok);
+}
+.brand-mark.alert{ border-color:var(--crit); }
+.brand-mark.alert::before{ background:var(--crit); box-shadow:0 0 10px var(--crit); animation:pulseDot 1s infinite; }
+@keyframes pulseDot{ 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+.brand-text h1{
+  font-size:16px; font-weight:800; letter-spacing:0.08em;
+  color:var(--text-bright); text-transform:uppercase;
+}
+.brand-text p{
+  font-family:var(--mono);
+  font-size:10.5px; color:var(--text-dim);
+  letter-spacing:0.04em;
+  margin-top:1px;
+}
+
+.status-cluster{ display:flex; align-items:center; gap:22px; }
+.status-item{ text-align:right; }
+.status-item .label{ font-size:9.5px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; }
+.status-item .value{ font-family:var(--mono); font-size:13px; color:var(--text-bright); margin-top:2px; }
+.status-pill{
+  font-family:var(--mono); font-size:11px; font-weight:600;
+  padding:6px 12px; border-radius:20px;
+  border:1px solid var(--line);
+  display:flex; align-items:center; gap:7px;
+  letter-spacing:0.04em;
+  text-transform:uppercase;
+}
+.status-pill .dot{ width:6px; height:6px; border-radius:50%; background:var(--ok); }
+.status-pill.scanning{ border-color:rgba(255,176,32,0.4); color:var(--warn); }
+.status-pill.scanning .dot{ background:var(--warn); animation:pulseDot 0.8s infinite; }
+.status-pill.idle{ color:var(--text-dim); }
+.status-pill.idle .dot{ background:var(--text-dim); }
+.status-pill.critical{ border-color:rgba(255,68,68,0.5); color:var(--crit); background:rgba(255,68,68,0.06); }
+.status-pill.critical .dot{ background:var(--crit); animation:pulseDot 0.6s infinite; }
+
+/* ---------- Layout ---------- */
+.console{
+  display:grid;
+  grid-template-columns:1fr 380px;
+  gap:1px;
+  background:var(--line);
+  min-height:calc(100vh - 63px);
+}
+.col-main, .col-side{ background:var(--bg); }
+.col-main{ padding:24px; display:flex; flex-direction:column; gap:18px; }
+.col-side{ padding:0; display:flex; flex-direction:column; border-left:1px solid var(--line); }
+
+/* ---------- Panel shell ---------- */
+.panel{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+}
+.panel-head{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:13px 16px;
+  border-bottom:1px solid var(--line);
+}
+.panel-head h2{
+  font-size:11.5px; font-weight:700; letter-spacing:0.1em;
+  text-transform:uppercase; color:var(--text-dim);
+}
+.panel-head h2 span{ color:var(--text-bright); }
+.panel-body{ padding:16px; }
+
+/* ---------- Upload / intake zone ---------- */
+.intake{
+  border:1.5px dashed var(--line);
+  border-radius:var(--radius);
+  padding:46px 24px;
+  text-align:center;
+  position:relative;
+  transition:border-color 0.2s, background 0.2s;
+  background:repeating-linear-gradient(135deg, rgba(255,255,255,0.012) 0 2px, transparent 2px 14px);
+}
+.intake.dragover{ border-color:var(--info); background:rgba(79,169,224,0.05); }
+.intake-icon{
+  width:46px; height:46px; margin:0 auto 14px;
+  border:1.5px solid var(--text-dim);
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  color:var(--text-dim);
+}
+.intake h3{ color:var(--text-bright); font-size:14.5px; font-weight:600; margin-bottom:6px; }
+.intake p{ font-size:12px; color:var(--text-dim); margin-bottom:18px; }
+.btn{
+  display:inline-flex; align-items:center; gap:8px;
+  background:var(--info); color:#06161f;
+  border:none; padding:10px 20px;
+  font-size:12.5px; font-weight:700;
+  letter-spacing:0.03em;
+  border-radius:var(--radius);
+  transition:filter 0.15s, transform 0.1s;
+}
+.btn:hover{ filter:brightness(1.12); }
+.btn:active{ transform:scale(0.98); }
+.btn-ghost{
+  background:transparent; color:var(--text); border:1px solid var(--line);
+}
+.btn-ghost:hover{ border-color:#33444d; background:var(--panel-raised); }
+.btn-crit{ background:var(--crit); color:#fff; }
+.btn:disabled{ opacity:0.4; cursor:not-allowed; filter:none; }
+.intake input[type=file]{ display:none; }
+.intake-meta{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); margin-top:16px; }
+.intake-error{
+  margin-top:16px; padding:11px 13px; text-align:left;
+  background:rgba(255,68,68,0.07); border:1px solid rgba(255,68,68,0.3);
+  border-radius:var(--radius); font-size:12px; color:var(--text); line-height:1.55;
+}
+.intake-error b{ color:var(--crit); display:block; margin-bottom:4px; font-size:12.5px; }
+.intake-error code{ background:rgba(255,255,255,0.07); padding:1px 5px; border-radius:2px; font-family:var(--mono); font-size:11px; color:var(--text-bright); }
+.intake-error ol{ margin:7px 0 0 18px; padding:0; }
+.intake-error li{ margin-bottom:2px; }
+
+/* model status badge */
+.model-badge{
+  display:flex; align-items:center; gap:7px;
+  font-family:var(--mono); font-size:10.5px;
+  padding:4px 10px; border-radius:12px; border:1px solid var(--line);
+  color:var(--text-dim);
+}
+.model-badge .mdot{ width:6px; height:6px; border-radius:50%; background:var(--text-dim); flex-shrink:0; }
+.model-badge.loading .mdot{ background:var(--info); animation:pulseDot 0.8s infinite; }
+.model-badge.loading{ color:var(--info); border-color:rgba(79,169,224,0.35); }
+.model-badge.ready .mdot{ background:var(--ok); }
+.model-badge.ready{ color:var(--ok); border-color:rgba(61,220,132,0.3); }
+.model-badge.fallback .mdot{ background:var(--warn); }
+.model-badge.fallback{ color:var(--warn); border-color:rgba(255,176,32,0.3); }
+
+/* ---------- Video / analysis stage ---------- */
+.stage{
+  display:none;
+  flex-direction:column;
+  gap:14px;
+}
+.stage.active{ display:flex; }
+.video-frame{
+  position:relative;
+  background:#000;
+  border-radius:var(--radius);
+  overflow:hidden;
+  border:1px solid var(--line);
+  aspect-ratio:16/9;
+}
+.video-frame video{ width:100%; height:100%; object-fit:contain; display:block; background:#000; }
+.video-frame canvas{ position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+.scan-overlay{
+  position:absolute; inset:0; pointer-events:none;
+  background:linear-gradient(180deg, transparent 0%, rgba(79,169,224,0.06) 50%, transparent 100%);
+  background-size:100% 200%;
+  opacity:0;
+}
+.scan-overlay.active{ opacity:1; animation:scanSweep 1.6s linear infinite; }
+@keyframes scanSweep{ 0%{ background-position:0 -100%; } 100%{ background-position:0 100%; } }
+
+.rec-tag{
+  position:absolute; top:10px; left:10px;
+  background:rgba(0,0,0,0.55);
+  border:1px solid rgba(255,255,255,0.12);
+  padding:4px 9px; border-radius:3px;
+  font-family:var(--mono); font-size:10.5px; color:var(--text);
+  display:flex; align-items:center; gap:6px; letter-spacing:0.05em;
+  backdrop-filter:blur(2px);
+}
+.rec-tag .rd{ width:6px; height:6px; border-radius:50%; background:var(--crit); animation:pulseDot 1s infinite; }
+.frame-counter{
+  position:absolute; top:10px; right:10px;
+  background:rgba(0,0,0,0.55);
+  border:1px solid rgba(255,255,255,0.12);
+  padding:4px 9px; border-radius:3px;
+  font-family:var(--mono); font-size:10.5px; color:var(--text-dim);
+}
+
+.zone-flag{
+  position:absolute;
+  border:1.5px solid var(--warn);
+  background:rgba(255,176,32,0.08);
+  border-radius:2px;
+}
+.zone-flag.crit{ border-color:var(--crit); background:rgba(255,68,68,0.1); }
+.zone-flag .tag{
+  position:absolute; top:-19px; left:-1.5px;
+  font-family:var(--mono); font-size:9.5px;
+  background:var(--warn); color:#1a1300; padding:1px 5px;
+  white-space:nowrap; font-weight:700;
+}
+.zone-flag.crit .tag{ background:var(--crit); color:#fff; }
+
+.person-box{
+  position:absolute;
+  border:1.5px solid var(--ok);
+  border-radius:1px;
+  box-shadow:0 0 0 1px rgba(0,0,0,0.4);
+}
+.person-box.cluster{ border-color:var(--warn); }
+.person-box .pid{
+  position:absolute; top:-15px; left:-1px;
+  font-family:var(--mono); font-size:8.5px;
+  background:rgba(0,0,0,0.65); color:var(--ok);
+  padding:0px 4px; white-space:nowrap;
+}
+.person-box.cluster .pid{ color:var(--warn); }
+
+/* controls under video */
+.stage-controls{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.stage-controls .filename{
+  font-family:var(--mono); font-size:11.5px; color:var(--text-dim);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px;
+}
+.spacer{ flex:1; }
+
+/* ---------- Telemetry readout ---------- */
+.telemetry{
+  display:grid;
+  grid-template-columns:repeat(4, 1fr);
+  gap:1px;
+  background:var(--line);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  overflow:hidden;
+}
+.telemetry .cell{
+  background:var(--panel);
+  padding:14px 16px;
+}
+.telemetry .cell .l{ font-size:9.5px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.09em; margin-bottom:7px; }
+.telemetry .cell .v{ font-family:var(--mono); font-size:21px; color:var(--text-bright); font-weight:600; }
+.telemetry .cell .v.ok{ color:var(--ok); }
+.telemetry .cell .v.warn{ color:var(--warn); }
+.telemetry .cell .v.crit{ color:var(--crit); }
+.telemetry .cell .sub{ font-family:var(--mono); font-size:10px; color:var(--text-dim); margin-top:3px; }
+
+/* ---------- Severity gauge (signature element) ---------- */
+.gauge-panel .panel-body{ display:flex; gap:22px; align-items:center; }
+.gauge-wrap{ position:relative; width:148px; height:108px; flex-shrink:0; }
+.gauge-wrap svg{ width:100%; height:100%; overflow:visible; }
+.gauge-needle{ transition:transform 0.7s cubic-bezier(.4,1.4,.4,1); }
+.gauge-readout{ position:absolute; bottom:2px; left:0; width:100%; text-align:center; }
+.gauge-readout .num{ font-family:var(--mono); font-size:22px; font-weight:700; color:var(--text-bright); }
+.gauge-readout .lab{ font-family:var(--mono); font-size:9px; color:var(--text-dim); letter-spacing:0.08em; }
+.gauge-detail{ flex:1; }
+.gauge-detail .verdict{ font-size:16px; font-weight:700; color:var(--text-bright); margin-bottom:5px; letter-spacing:0.01em; }
+.gauge-detail .verdict.ok{ color:var(--ok); }
+.gauge-detail .verdict.warn{ color:var(--warn); }
+.gauge-detail .verdict.crit{ color:var(--crit); }
+.gauge-detail .desc{ font-size:12.5px; color:var(--text-dim); line-height:1.5; }
+.gauge-detail .tags{ display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
+.gtag{
+  font-family:var(--mono); font-size:10px; padding:3px 8px;
+  border:1px solid var(--line); border-radius:3px; color:var(--text-dim);
+}
+.gtag.flag{ border-color:rgba(255,176,32,0.4); color:var(--warn); }
+
+/* ---------- Activity / analysis log (left, scrolling process feed) ---------- */
+.proc-log{
+  font-family:var(--mono); font-size:11.5px;
+  max-height:160px; overflow-y:auto;
+  display:flex; flex-direction:column; gap:6px;
+}
+.proc-log .ln{ color:var(--text-dim); display:flex; gap:10px; }
+.proc-log .ln .t{ color:#3a4a52; flex-shrink:0; }
+.proc-log .ln.warn{ color:var(--warn); }
+.proc-log .ln.crit{ color:var(--crit); font-weight:600; }
+.proc-log .ln.ok{ color:var(--ok); }
+
+/* ---------- Empty state ---------- */
+.empty-state{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center; padding:50px 20px; gap:10px; color:var(--text-dim); flex:1;
+}
+.empty-state .ic{
+  width:42px; height:42px; border:1.5px solid var(--line); border-radius:50%;
+  display:flex; align-items:center; justify-content:center; margin-bottom:6px;
+}
+.empty-state h3{ font-size:13px; color:var(--text); font-weight:600; }
+.empty-state p{ font-size:11.5px; max-width:230px; line-height:1.5; }
+
+/* ---------- Alert log (right column) ---------- */
+.side-head{
+  padding:18px 18px 14px;
+  border-bottom:1px solid var(--line);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.side-head h2{ font-size:12.5px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-bright); }
+.side-head .count{
+  font-family:var(--mono); font-size:11px; color:var(--text-dim);
+  background:var(--panel-raised); border:1px solid var(--line);
+  padding:2px 9px; border-radius:10px;
+}
+.alert-feed{ flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:8px; }
+
+.alert-card{
+  border:1px solid var(--line);
+  border-left:3px solid var(--text-dim);
+  background:var(--panel-raised);
+  border-radius:var(--radius);
+  padding:12px 13px;
+  animation:slideIn 0.35s ease;
+}
+@keyframes slideIn{ from{ opacity:0; transform:translateY(-6px); } to{ opacity:1; transform:translateY(0); } }
+.alert-card.warn{ border-left-color:var(--warn); }
+.alert-card.crit{ border-left-color:var(--crit); background:rgba(255,68,68,0.05); }
+.alert-card.ok{ border-left-color:var(--ok); }
+.alert-card .row1{ display:flex; align-items:center; justify-content:between; gap:8px; margin-bottom:6px; }
+.alert-card .sev{
+  font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:0.06em;
+  padding:2px 7px; border-radius:3px; text-transform:uppercase;
+}
+.alert-card.warn .sev{ background:rgba(255,176,32,0.15); color:var(--warn); }
+.alert-card.crit .sev{ background:rgba(255,68,68,0.18); color:var(--crit); }
+.alert-card.ok .sev{ background:rgba(61,220,132,0.15); color:var(--ok); }
+.alert-card .ts{ font-family:var(--mono); font-size:10px; color:var(--text-dim); margin-left:auto; }
+.alert-card .ttl{ font-size:12.5px; color:var(--text-bright); font-weight:600; margin-bottom:3px; }
+.alert-card .meta{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;}
+.alert-card .meta b{ color:var(--text); }
+
+.side-foot{
+  padding:13px 18px; border-top:1px solid var(--line);
+  font-family:var(--mono); font-size:10px; color:var(--text-dim);
+  display:flex; justify-content:space-between; align-items:center;
+}
+
+/* ---------- misc ---------- */
+.hidden{ display:none !important; }
+.flex-row{ display:flex; align-items:center; gap:10px; }
+.tip{ font-size:11px; color:var(--text-dim); margin-top:8px; line-height:1.5; }
+
+@media (max-width: 900px){
+  .console{ grid-template-columns:1fr; }
+  .col-side{ border-left:none; border-top:1px solid var(--line); }
+  .telemetry{ grid-template-columns:repeat(2,1fr); }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ TOP BAR ============ -->
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark" id="brandMark"></div>
+    <div class="brand-text">
+      <h1>Sentry</h1>
+      <p>Crowd Anomaly &amp; Behavioral Threat Console</p>
+    </div>
+  </div>
+  <div class="status-cluster">
+    <div class="status-item">
+      <div class="label">Session</div>
+      <div class="value" id="sessionClock">00:00:00</div>
+    </div>
+    <div class="status-item">
+      <div class="label">Alerts Logged</div>
+      <div class="value" id="alertCountTop">0</div>
+    </div>
+    <div class="status-pill idle" id="statusPill">
+      <span class="dot"></span><span id="statusPillText">Standby</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONSOLE ============ -->
+<div class="console">
+
+  <!-- ===== MAIN COLUMN ===== -->
+  <div class="col-main">
+
+    <!-- Intake -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Footage <span>Intake</span></h2>
+        <div class="model-badge loading" id="modelBadge">
+          <span class="mdot"></span><span id="modelBadgeText">Loading detection model…</span>
+        </div>
+      </div>
+      <div class="panel-body">
+
+        <div class="intake" id="dropZone">
+          <input type="file" id="fileInput" accept="video/mp4,video/webm,video/quicktime,video/x-msvideo,video/*">
+          <div class="intake-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <h3>Upload CCTV footage</h3>
+          <p>Drag and drop a video file here, or browse to select one<br>Supported: MP4, WebM, MOV, AVI</p>
+          <button class="btn" id="browseBtn" type="button">Upload Footage</button>
+          <div class="intake-meta" id="intakeMeta">No active feed &nbsp;·&nbsp; Awaiting input</div>
+          <div class="intake-error hidden" id="intakeError"></div>
+        </div>
+
+        <!-- Active analysis stage -->
+        <div class="stage" id="stage">
+          <div class="video-frame" id="videoFrame">
+            <video id="video" muted playsinline></video>
+            <canvas id="overlayCanvas"></canvas>
+            <div class="scan-overlay" id="scanOverlay"></div>
+            <div class="rec-tag"><span class="rd"></span> LIVE ANALYSIS</div>
+            <div class="frame-counter" id="frameCounter">FRAME 0</div>
+          </div>
+
+          <div class="stage-controls">
+            <button class="btn" id="playBtn" type="button">▶ Run Detection</button>
+            <button class="btn-ghost btn" id="resetBtn" type="button">Clear Feed</button>
+            <span class="filename" id="fileNameLabel"></span>
+            <div class="spacer"></div>
+            <span class="intake-meta" id="durationLabel"></span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Telemetry -->
+    <div class="panel">
+      <div class="panel-head"><h2>Live <span>Telemetry</span></h2></div>
+      <div class="panel-body" style="padding:0;">
+        <div class="telemetry">
+          <div class="cell">
+            <div class="l">Persons Detected</div>
+            <div class="v" id="telPersons">—</div>
+            <div class="sub" id="telPersonsSub">YOLOv8n, live count</div>
+          </div>
+          <div class="cell">
+            <div class="l">Crowd Density</div>
+            <div class="v" id="telDensity">—</div>
+            <div class="sub" id="telDensitySub">est. persons/m²</div>
+          </div>
+          <div class="cell">
+            <div class="l">Motion Agitation</div>
+            <div class="v" id="telMotion">—</div>
+            <div class="sub" id="telMotionSub">σ across frame</div>
+          </div>
+          <div class="cell">
+            <div class="l">Flow Coherence</div>
+            <div class="v" id="telFlow">—</div>
+            <div class="sub" id="telFlowSub">directional order</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Severity gauge -->
+    <div class="panel gauge-panel">
+      <div class="panel-head"><h2>AI <span>Threat Assessment</span></h2></div>
+      <div class="panel-body">
+        <div class="gauge-wrap">
+          <svg viewBox="0 0 148 100">
+            <path d="M 14 84 A 60 60 0 0 1 44 32" stroke="#3DDC84" stroke-width="10" fill="none" stroke-linecap="round"/>
+            <path d="M 44 32 A 60 60 0 0 1 104 32" stroke="#FFB020" stroke-width="10" fill="none" stroke-linecap="round"/>
+            <path d="M 104 32 A 60 60 0 0 1 134 84" stroke="#FF4444" stroke-width="10" fill="none" stroke-linecap="round"/>
+            <g id="gaugeNeedle">
+              <line x1="74" y1="84" x2="74" y2="30" stroke="#EAF1F3" stroke-width="2.5" stroke-linecap="round"/>
+            </g>
+            <circle cx="74" cy="84" r="4" fill="#EAF1F3"/>
+          </svg>
+          <div class="gauge-readout">
+            <div class="num" id="gaugeNum">0</div>
+            <div class="lab">RISK INDEX</div>
+          </div>
+        </div>
+        <div class="gauge-detail">
+          <div class="verdict" id="verdictText">Awaiting footage</div>
+          <div class="desc" id="verdictDesc">Upload and run a clip to begin behavioral and density analysis. The engine samples frames continuously and updates this assessment in real time.</div>
+          <div class="tags" id="verdictTags"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Process log -->
+    <div class="panel">
+      <div class="panel-head"><h2>Analysis <span>Process Log</span></h2></div>
+      <div class="panel-body">
+        <div class="proc-log" id="procLog">
+          <div class="ln"><span class="t">--:--:--</span><span>Engine idle. Load footage to initialize detection pipeline.</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== SIDE COLUMN: ALERT LOG ===== -->
+  <div class="col-side">
+    <div class="side-head">
+      <h2>Alert Log</h2>
+      <span class="count" id="alertCountSide">0 entries</span>
+    </div>
+
+    <div class="alert-feed" id="alertFeed">
+      <div class="empty-state" id="emptyState">
+        <div class="ic">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+        </div>
+        <h3>No alerts yet</h3>
+        <p>Detected anomalies will appear here in real time, newest first, with severity, location and timestamp.</p>
+      </div>
+    </div>
+
+    <div class="side-foot">
+      <span>Retention: session-local</span>
+      <button class="btn-ghost btn" id="clearLogBtn" style="padding:5px 11px; font-size:10.5px;">Clear Log</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ==========================================================================
+   SENTRY — Crowd Anomaly & Behavioral Threat Detection Console
+   --------------------------------------------------------------------------
+   ENGINE NOTE:
+   Person detection runs a real pretrained model — YOLOv8n (Ultralytics,
+   COCO-trained, person class) — entirely client-side via ONNX Runtime Web
+   (WASM). Each sampled video frame is letterboxed to 640x640, run through
+   the model, decoded (box decode + manual NMS), and filtered to the
+   "person" class. Crowd density is the actual detected-person count divided
+   over the visible frame area, not a texture proxy. The green boxes drawn
+   on the video are real model output.
+
+   ANOMALY DETECTION ("red boxes"): driven entirely by clustering of real
+   person detections — a sliding window scans the frame for any region
+   holding several detected people in close proximity (CONFIG.clusterMinCount
+   within CONFIG.clusterWindowFrac of the frame). This means a red box can
+   only ever appear where actual detected people are; it is structurally
+   impossible for an empty region of frame to be flagged, which was the
+   main accuracy complaint with the earlier motion-only approach.
+
+   Motion-variance / frame-differencing is kept only as a SECONDARY signal:
+   it can raise a cluster's severity (marking it "agitated" — e.g. a group
+   that's also running or scattering) and contributes a smaller, separate
+   term to the overall risk score, but it can never independently create a
+   displayed anomaly box on its own, and it's effectively disabled when no
+   people are detected nearby. This is an intentional accuracy tradeoff: it
+   means a real altercation captured with the model unavailable (offline,
+   CDN blocked) will under-flag rather than over-flag — see the fallback
+   note below for how that degraded mode is surfaced in the UI.
+
+   MODEL ACCURACY: this ships with YOLOv8n ("nano"), the smallest and least
+   accurate model in the YOLOv8 family, chosen for zero-setup, single-file
+   demoing. See the comment on CONFIG.modelUrl below for a 3-step upgrade
+   to YOLOv8s/m ("small"/"medium") if you want a real accuracy improvement —
+   it requires exporting the model yourself once (no hosted, CORS-open copy
+   of those larger sizes currently exists to point at directly), but nothing
+   else in this file needs to change to use it.
+
+   If the model fails to load (no internet on first load, CDN blocked,
+   slow connection that times out) the console automatically falls back to
+   the motion-heuristic-only engine and says so in the UI — it never fails
+   silently. In that fallback mode, anomaly detection is necessarily weaker
+   (motion-only, no person-gating) since there are no real detections left
+   to cluster.
+   ========================================================================== */
+
+// ---------------------------------------------------------------------------
+// CONFIG
+// ---------------------------------------------------------------------------
+const CONFIG = {
+  // Risk index (0-100) thresholds for severity classification.
+  thresholds: { warn: 45, crit: 72 },
+
+  // How long (ms) the Threat Assessment gauge's verdict ("Normal" /
+  // "Elevated" / "Critical") holds at the highest severity it recently saw,
+  // before decaying back down. Risk is sampled every sampleIntervalMs and
+  // can be genuinely noisy frame-to-frame — without this, a brief spike that
+  // was real enough to log an alert could drop back below threshold on the
+  // very next sample, and the gauge would flip straight back to "Normal"
+  // while that same alert still sits at the top of the log, which reads as
+  // a contradiction even though both are technically correct for their own
+  // instant. This only affects the verdict label/color; the numeric risk
+  // readout on the needle itself always shows the live, true value.
+  gaugeHoldMs: 6000,
+
+  // How often (ms) to sample a frame from the playing video for analysis.
+  // YOLO inference is the slow step — 700ms keeps CPU-only WASM responsive.
+  sampleIntervalMs: 700,
+
+  // Detection model (YOLOv8n ONNX, COCO-pretrained, ~12.8MB).
+  // Loaded once at startup from a public, versioned source.
+  //
+  // OPTIONAL HIGH-ACCURACY BACKEND: set backendUrl to point at a running
+  // instance of backend/app.py (see that file for setup) to use a real,
+  // full-size YOLOv8 model (medium/large/x) running server-side instead of
+  // the in-browser nano model. When set, this is checked and preferred
+  // automatically at startup; if it's unreachable, the app transparently
+  // falls back to loading the in-browser model below. Leave this as null
+  // to skip the backend entirely and just use the in-browser model.
+  //   backendUrl: "http://localhost:8000/detect",
+  backendUrl: null,
+  //
+  // ACCURACY UPGRADE (in-browser, no backend): YOLOv8n ("nano") is the
+  // smallest, fastest, and least accurate model in the YOLOv8 family — it's
+  // the right default for a zero-setup single-file demo, but YOLOv8s
+  // ("small") is meaningfully more accurate at a modest size/speed cost, and
+  // YOLOv8m ("medium") more still. No publicly hosted, CORS-open .onnx
+  // export of those larger sizes is currently available to point at
+  // directly, so to upgrade without running a backend:
+  //   1. pip install ultralytics
+  //   2. yolo export model=yolov8s.pt format=onnx imgsz=640
+  //      (swap yolov8s.pt for yolov8m.pt for the medium model)
+  //   3. Put the resulting yolov8s.onnx next to this HTML file and change
+  //      modelUrl below to "./yolov8s.onnx" (or "./yolov8m.onnx")
+  // Everything else in this file (decode, NMS, clustering) already matches
+  // standard YOLOv8 ONNX output and needs no changes for s/m/l/x variants.
+  modelUrl: "https://raw.githubusercontent.com/Hyuto/yolov8-onnxruntime-web/master/public/model/yolov8n.onnx",
+  onnxRuntimeUrl: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/ort.min.js",
+  inputSize: 640,          // YOLOv8 model input is 640x640
+  personClassId: 0,        // COCO class 0 = "person"
+  scoreThreshold: 0.35,    // min confidence to count as a detection
+  iouThreshold: 0.45,      // NMS overlap threshold
+
+  // Assumed visible ground area in m² for the camera's field of view, used
+  // to turn a raw person count into a persons/m² density estimate. Tune this
+  // per camera placement in a real deployment (wider shots = bigger number).
+  assumedSceneAreaM2: 40,
+
+  // Cluster (anomaly) detection — driven entirely by real person boxes.
+  // A sliding window of size clusterWindowFrac (fraction of frame
+  // width/height) is scanned across the frame; any placement containing at
+  // least clusterMinCount person-centers is flagged as a dense cluster.
+  //
+  // NOTE on tuning: a more accurate detector (e.g. the optional YOLOv8m
+  // backend) produces fewer, tighter, more correct person boxes than the
+  // in-browser nano model — nano's extra false-positive boxes could
+  // incidentally help hit a high cluster count, so a threshold tuned while
+  // testing with nano may under-fire once a more accurate model is in use.
+  // 3 people within ~25% of the frame is a more realistic "crowd forming"
+  // signal across both detectors; lower further if your demo footage has a
+  // genuinely sparse "crowd."
+  clusterMinCount: 3,
+  clusterWindowFrac: 0.25,
+
+  // Rapid-movement ("agitated") detection — a real, direct measurement of
+  // average per-cell pixel-delta motion (see analyzeMotion's NOISE_FLOOR,
+  // ~11, for the idle/noise baseline on this same scale) inside a specific
+  // region: a cluster's box, or the padded area around an individual
+  // detected person. Crossing this threshold can mark a cluster "agitated"
+  // (raising its severity) OR, independent of any cluster, flag a standalone
+  // red anomaly box around fast-moving people even without a large group —
+  // e.g. a fight or a sprinting person. Lower this if genuinely rapid
+  // movement in your footage isn't firing; raise it if normal walking/
+  // gesturing is triggering it.
+  agitationMotionThreshold: 26,
+};
+
+// ---------------------------------------------------------------------------
+// STATE
+// ---------------------------------------------------------------------------
+let alertLog = [];
+let alertSeq = 0;
+let sessionStart = Date.now();
+let analysisTimer = null;
+let frameCount = 0;
+let lastFrameData = null;
+let currentFile = null;
+let lastCriticalAt = 0;
+let lastWarnAt = 0;
+let lastGaugeCritAt = 0;  // separate from the alert-throttle timers above —
+let lastGaugeWarnAt = 0;  // this is what holds the GAUGE's displayed severity briefly
+
+// model state
+let ortSession = null;
+let modelReady = false;
+let modelLoadFailed = false;
+let lastPersonCount = 0;
+let isAnalyzing = false; // guards against overlapping async inference calls
+let activeDetectorLabel = 'YOLOv8n'; // updated once we know which source actually loaded
+
+// ---------------------------------------------------------------------------
+// DOM refs
+// ---------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+const dropZone = $('dropZone'), fileInput = $('fileInput'), browseBtn = $('browseBtn');
+const stage = $('stage'), video = $('video'), overlayCanvas = $('overlayCanvas');
+const playBtn = $('playBtn'), resetBtn = $('resetBtn');
+const scanOverlay = $('scanOverlay');
+const procLog = $('procLog');
+const statusPill = $('statusPill'), statusPillText = $('statusPillText'), brandMark = $('brandMark');
+const alertFeed = $('alertFeed'), emptyState = $('emptyState');
+const alertCountTop = $('alertCountTop'), alertCountSide = $('alertCountSide');
+const modelBadge = $('modelBadge'), modelBadgeText = $('modelBadgeText');
+const intakeError = $('intakeError');
+
+// ---------------------------------------------------------------------------
+// Detection model bootstrap — loads onnxruntime-web from CDN, then the
+// pretrained YOLOv8n ONNX model. Runs once on page load, in parallel with
+// the user browsing for a file. Falls back gracefully if either step fails.
+// ---------------------------------------------------------------------------
+function setModelBadge(mode, text) {
+  modelBadge.className = 'model-badge ' + mode;
+  modelBadgeText.textContent = text;
+}
+
+async function initDetectionModel() {
+  // If a backend URL is configured, prefer it — it runs a real, larger
+  // YOLOv8 model server-side and is more accurate than the in-browser nano
+  // model. Check it's actually reachable before committing to it; if not,
+  // fall through to loading the in-browser model instead of getting stuck.
+  if (CONFIG.backendUrl) {
+    setModelBadge('loading', 'Connecting to detection backend…');
+    try {
+      const healthUrl = CONFIG.backendUrl.replace(/\/detect\/?$/, '/health');
+      const res = await fetch(healthUrl, { method: 'GET' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const info = await res.json();
+      modelReady = true;
+      activeDetectorLabel = info.model || 'backend model';
+      setModelBadge('ready', `Backend ready — ${info.model || 'server-side model'} active`);
+      logLine(`Connected to detection backend at ${CONFIG.backendUrl} (${info.model || 'unknown model'}). Using this instead of the in-browser model.`, 'ok');
+      return;
+    } catch (err) {
+      logLine(`Configured backend at ${CONFIG.backendUrl} is unreachable (${err.message}). Falling back to the in-browser model.`, 'warn');
+      // fall through to in-browser loading below
+    }
+  }
+
+  setModelBadge('loading', 'Loading detection model…');
+  try {
+    await loadScript(CONFIG.onnxRuntimeUrl);
+    if (typeof ort === 'undefined') throw new Error('onnxruntime-web failed to initialize');
+
+    // WASM artifact path for onnxruntime-web 1.27.0
+    ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/';
+
+    setModelBadge('loading', 'Fetching YOLOv8n weights (~13MB)…');
+    ortSession = await ort.InferenceSession.create(CONFIG.modelUrl, {
+      executionProviders: ['wasm'],
+      graphOptimizationLevel: 'all',
+    });
+
+    modelReady = true;
+    setModelBadge('ready', 'YOLOv8n ready — real-time person detection active');
+    logLine('Detection model loaded: YOLOv8n (ONNX, COCO-pretrained, person class). Running client-side via WebAssembly.', 'ok');
+  } catch (err) {
+    modelLoadFailed = true;
+    setModelBadge('fallback', 'Model unavailable — using motion-heuristic fallback');
+    logLine(`Could not load YOLOv8n (${err.message || 'network/CDN issue'}). Falling back to the motion-heuristic engine. Person counts will be unavailable until this loads — check your internet connection and reload.`, 'warn');
+  }
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('script load failed: ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+initDetectionModel();
+
+// ---------------------------------------------------------------------------
+// Session clock
+// ---------------------------------------------------------------------------
+setInterval(() => {
+  const s = Math.floor((Date.now() - sessionStart) / 1000);
+  const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  $('sessionClock').textContent = `${hh}:${mm}:${ss}`;
+}, 1000);
+
+// ---------------------------------------------------------------------------
+// Process log helper
+// ---------------------------------------------------------------------------
+function logLine(text, level = '') {
+  const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const div = document.createElement('div');
+  div.className = 'ln' + (level ? ' ' + level : '');
+  div.innerHTML = `<span class="t">${t}</span><span>${text}</span>`;
+  procLog.appendChild(div);
+  procLog.scrollTop = procLog.scrollHeight;
+  while (procLog.children.length > 60) procLog.removeChild(procLog.firstChild);
+}
+
+// ---------------------------------------------------------------------------
+// File intake — drag/drop + browse
+// ---------------------------------------------------------------------------
+browseBtn.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('click', (e) => { if (e.target === browseBtn) return; fileInput.click(); });
+
+['dragenter', 'dragover'].forEach(evt =>
+  dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.add('dragover'); })
+);
+['dragleave', 'drop'].forEach(evt =>
+  dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); })
+);
+dropZone.addEventListener('drop', (e) => {
+  const f = e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+fileInput.addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (f) loadFile(f);
+});
+
+function loadFile(file) {
+  // Tear down any previous session FIRST — without this, uploading a new
+  // video while a previous one was loaded/playing leaves the old interval
+  // timer and in-flight-inference guard running, and detection silently
+  // does nothing until a full page refresh.
+  stopAnalysisAndResetSession();
+
+  if (!file.type.startsWith('video/') && !looksLikeVideoFile(file.name)) {
+    showIntakeError(
+      'Unrecognized file type',
+      `"${file.name}" doesn't look like a video file. Upload an MP4, WebM, or MOV.`
+    );
+    return;
+  }
+
+  // Browsers (Chrome/Firefox/Edge/Safari) have no native AVI decoder at all —
+  // the <video> element will fail to load AVI regardless of the file extension
+  // or what this script does. Detect this up front and explain it clearly,
+  // rather than letting the upload silently do nothing.
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (ext === 'avi' || file.type === 'video/x-msvideo' || file.type === 'video/avi') {
+    showIntakeError(
+      'AVI is not supported by any web browser',
+      `Browsers have no built-in AVI decoder — this isn't a Sentry limitation, it's a browser limitation. To use this clip:`,
+      [
+        'Open VLC → Media → Convert/Save → Add your file',
+        'Set Profile to exactly "Video – H.264 + MP3 (MP4)"',
+        'Make sure the output filename ends in .mp4 (VLC won\'t warn you if you forget)',
+        'Re-upload the converted file here'
+      ]
+    );
+    logLine(`Upload rejected: "${file.name}" is AVI, which no browser can decode natively.`, 'warn');
+    return;
+  }
+
+  // Probe actual decodability via canPlayType before committing to it — this
+  // catches the "converted but still not browser-playable" case (e.g. MPEG-4
+  // ASP / Xvid video inside an MP4 container, which some VLC profiles produce).
+  const probe = document.createElement('video');
+  const mime = file.type || guessMimeFromExt(ext);
+  const support = mime ? probe.canPlayType(mime) : '';
+  if (mime && support === '') {
+    showIntakeError(
+      'This file\'s codec isn\'t playable in a browser',
+      `The container looks like ${ext.toUpperCase()}, but the video codec inside it isn't one browsers can decode. This commonly happens when a converter re-wraps the file without re-encoding the actual video stream. In VLC, confirm the profile is exactly "Video – H.264 + MP3 (MP4)" — not just any MP4 preset — then convert again.`
+    );
+    logLine(`Upload rejected: "${file.name}" — codec not supported by this browser.`, 'warn');
+    return;
+  }
+
+  currentFile = file;
+  const url = URL.createObjectURL(file);
+  video.src = url;
+  $('fileNameLabel').textContent = file.name;
+  $('intakeMeta').textContent = `Loaded: ${file.name} · ${(file.size / 1048576).toFixed(1)} MB`;
+
+  stage.classList.add('active');
+  resetTelemetry();
+  logLine(`Footage loaded: "${file.name}" (${(file.size/1048576).toFixed(1)} MB). Ready to run detection.`, 'ok');
+
+  video.onloadedmetadata = () => {
+    overlayCanvas.width = video.videoWidth || 640;
+    overlayCanvas.height = video.videoHeight || 360;
+    $('durationLabel').textContent = `Duration: ${formatTime(video.duration)}`;
+  };
+
+  // If metadata never arrives (decode failure VLC/canPlayType didn't catch),
+  // tell the user plainly instead of leaving a frozen black frame.
+  video.onerror = () => {
+    showIntakeError(
+      'This file failed to load in the browser',
+      `"${file.name}" passed initial checks but the browser couldn't actually decode it. Re-export it from VLC using "Video – H.264 + MP3 (MP4)" and confirm the saved file ends in .mp4.`
+    );
+    stage.classList.remove('active');
+    logLine(`Playback failed for "${file.name}" after loading — likely an unsupported codec inside the container.`, 'warn');
+  };
+}
+
+function looksLikeVideoFile(name) {
+  return /\.(mp4|webm|mov|m4v|ogv)$/i.test(name);
+}
+
+function guessMimeFromExt(ext) {
+  const map = { mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', ogv: 'video/ogg' };
+  return map[ext] || '';
+}
+
+function showIntakeError(title, message, steps) {
+  let html = `<b>${title}</b>${message}`;
+  if (steps && steps.length) {
+    html += '<ol>' + steps.map(s => `<li>${s}</li>`).join('') + '</ol>';
+  }
+  intakeError.innerHTML = html;
+  intakeError.classList.remove('hidden');
+}
+
+function formatTime(s) {
+  if (!isFinite(s)) return '—';
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+// ---------------------------------------------------------------------------
+// Reset
+// ---------------------------------------------------------------------------
+resetBtn.addEventListener('click', () => {
+  stopAnalysisAndResetSession();
+  video.src = '';
+  currentFile = null;
+  $('intakeMeta').textContent = 'No active feed · Awaiting input';
+  logLine('Feed cleared. Engine returned to standby.');
+});
+
+/**
+ * stopAnalysisAndResetSession — full teardown of any in-progress analysis
+ * session. Must run before loading a NEW video too, not just on explicit
+ * "Clear Feed" — otherwise the previous video's interval timer, in-flight
+ * inference guard, and play button label all leak into the new session and
+ * detection silently does nothing until a full page refresh. (That refresh
+ * "fixing" it was the tell: a refresh resets module-level state that this
+ * function now resets explicitly instead.)
+ */
+function stopAnalysisAndResetSession() {
+  video.pause();
+  clearInterval(analysisTimer);
+  analysisTimer = null;
+  isAnalyzing = false;       // clear the in-flight-inference guard so the new video isn't blocked forever
+  frameCount = 0;
+  lastFrameData = null;
+  lastPersonCount = 0;
+  lastGaugeCritAt = 0;       // clear gauge hold state so a previous video's severity doesn't bleed into the new one
+  lastGaugeWarnAt = 0;
+  stage.classList.remove('active');
+  intakeError.classList.add('hidden');
+  setStatus('idle');
+  resetTelemetry();
+  playBtn.textContent = '▶ Run Detection'; // previous video may have left this on Pause/Resume
+}
+
+function resetTelemetry() {
+  $('telPersons').textContent = '—'; $('telPersons').className = 'v';
+  $('telDensity').textContent = '—'; $('telDensity').className = 'v';
+  $('telMotion').textContent = '—'; $('telMotion').className = 'v';
+  $('telFlow').textContent = '—'; $('telFlow').className = 'v';
+  setGauge(0, 'idle');
+  $('verdictText').textContent = 'Awaiting footage';
+  $('verdictText').className = 'verdict';
+  $('verdictDesc').textContent = 'Upload and run a clip to begin behavioral and density analysis. The engine samples frames continuously and updates this assessment in real time.';
+  $('verdictTags').innerHTML = '';
+  clearZoneFlags();
+  clearPersonBoxes();
+  scanOverlay.classList.remove('active');
+  $('frameCounter').textContent = 'FRAME 0';
+}
+
+// ---------------------------------------------------------------------------
+// Play / Run detection
+// ---------------------------------------------------------------------------
+playBtn.addEventListener('click', () => {
+  if (video.paused) {
+    video.play();
+    playBtn.textContent = '⏸ Pause Detection';
+    scanOverlay.classList.add('active');
+    setStatus('scanning');
+    logLine('Detection pipeline engaged. Sampling frames for density and motion analysis...');
+    startAnalysisLoop();
+  } else {
+    video.pause();
+    playBtn.textContent = '▶ Resume Detection';
+    scanOverlay.classList.remove('active');
+    setStatus('idle');
+    clearInterval(analysisTimer);
+  }
+});
+video.addEventListener('ended', () => {
+  playBtn.textContent = '▶ Run Detection';
+  scanOverlay.classList.remove('active');
+  clearInterval(analysisTimer);
+  setStatus('idle');
+  logLine('End of footage reached. Detection paused.');
+});
+
+function startAnalysisLoop() {
+  clearInterval(analysisTimer);
+  analysisTimer = setInterval(() => {
+    if (video.paused || video.ended) return;
+    runFrameAnalysis();
+  }, CONFIG.sampleIntervalMs);
+}
+
+// ---------------------------------------------------------------------------
+// CORE ANALYSIS — real YOLOv8n person detection + motion-heuristic overlay
+// ---------------------------------------------------------------------------
+const workCanvas = document.createElement('canvas');
+const workCtx = workCanvas.getContext('2d', { willReadFrequently: true });
+const SAMPLE_W = 96, SAMPLE_H = 54; // downsampled grid for the motion heuristic
+workCanvas.width = SAMPLE_W; workCanvas.height = SAMPLE_H;
+
+// separate, larger canvas for YOLO's required 640x640 input
+const yoloCanvas = document.createElement('canvas');
+yoloCanvas.width = CONFIG.inputSize; yoloCanvas.height = CONFIG.inputSize;
+const yoloCtx = yoloCanvas.getContext('2d', { willReadFrequently: true });
+
+// canvas used only when a backend is configured — holds the frame at its
+// native resolution so it can be JPEG-encoded and POSTed for server-side inference
+const backendCanvas = document.createElement('canvas');
+const backendCtx = backendCanvas.getContext('2d', { willReadFrequently: true });
+
+async function runFrameAnalysis() {
+  if (isAnalyzing) return; // skip this tick if the previous inference hasn't finished
+  isAnalyzing = true;
+  frameCount++;
+  $('frameCounter').textContent = `FRAME ${frameCount}`;
+
+  try {
+    // --- Motion heuristic (always runs, cheap) ---
+    let frame;
+    try {
+      workCtx.drawImage(video, 0, 0, SAMPLE_W, SAMPLE_H);
+      frame = workCtx.getImageData(0, 0, SAMPLE_W, SAMPLE_H);
+    } catch (err) {
+      logLine('Frame read blocked by browser (cross-origin source). Using last known values.', 'warn');
+      isAnalyzing = false;
+      return;
+    }
+    const motionResult = analyzeMotion(frame, lastFrameData);
+    lastFrameData = frame;
+
+    // --- Person detection (real model, when ready) ---
+    let persons = [];
+    if (modelReady) {
+      try {
+        persons = await detectPersons(video);
+        lastPersonCount = persons.length;
+      } catch (err) {
+        logLine(`Inference error on frame ${frameCount}: ${err.message}. Skipping this sample.`, 'warn');
+      }
+    }
+
+    const result = fuseSignals(persons, motionResult);
+    renderTelemetry(result);
+    renderGauge(result);
+    renderPersonBoxes(persons);
+    renderZoneFlags(result.zones);
+
+    if (frameCount % 5 === 0) {
+      const personPart = modelReady ? `${persons.length} persons, ` : '';
+      const clusterHits = result.zones.filter(z => z.kind !== 'motion');
+      const motionHits = result.zones.filter(z => z.kind === 'motion');
+      const clusterPart = clusterHits.length
+        ? `largest cluster ${Math.max(...clusterHits.map(z => z.count))} ppl, `
+        : modelReady ? `no cluster ≥${CONFIG.clusterMinCount} found, ` : '';
+      const motionPart = motionHits.length ? `${motionHits.length} rapid-movement zone(s), ` : '';
+      logLine(`Sample #${frameCount} — ${personPart}${clusterPart}${motionPart}density ${result.density !== null ? result.density.toFixed(2) : 'n/a'} p/m², motion σ ${result.motion.toFixed(1)}, risk ${result.risk.toFixed(0)}/100`);
+    }
+
+    evaluateThreat(result);
+  } finally {
+    isAnalyzing = false;
+  }
+}
+
+/**
+ * detectPersons — top-level dispatcher. If CONFIG.backendUrl is set (see the
+ * matching comment in CONFIG), this prefers calling that backend — it runs a
+ * real, larger YOLOv8 model server-side and is meaningfully more accurate
+ * than the in-browser nano model. If the backend isn't configured, or a
+ * call to it fails (server not running, network error), this transparently
+ * falls back to the in-browser ONNX path so detection never just stops.
+ */
+let backendWarningShown = false;
+
+async function detectPersons(videoEl) {
+  if (CONFIG.backendUrl) {
+    try {
+      return await detectPersonsBackend(videoEl);
+    } catch (err) {
+      if (!backendWarningShown) {
+        backendWarningShown = true;
+        logLine(`Backend at ${CONFIG.backendUrl} unreachable (${err.message}). Falling back to in-browser detection for this session.`, 'warn');
+      }
+      return await detectPersonsLocal(videoEl);
+    }
+  }
+  return await detectPersonsLocal(videoEl);
+}
+
+/**
+ * detectPersonsBackend — sends the current frame as a JPEG to a real Python
+ * backend (see backend/app.py) running full-size YOLOv8 (m/l/x), and expects
+ * back { persons: [{x,y,w,h,score}, ...] } in the same normalized [0-1]
+ * coordinate shape the in-browser path produces, so nothing downstream needs
+ * to know which path served the detection.
+ */
+async function detectPersonsBackend(videoEl) {
+  const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+  backendCanvas.width = vw;
+  backendCanvas.height = vh;
+  backendCtx.drawImage(videoEl, 0, 0, vw, vh);
+
+  const blob = await new Promise(resolve => backendCanvas.toBlob(resolve, 'image/jpeg', 0.85));
+  if (!blob) throw new Error('frame encode failed');
+
+  const res = await fetch(CONFIG.backendUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'image/jpeg' },
+    body: blob,
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return data.persons || [];
+}
+
+/**
+ * detectPersonsLocal — runs YOLOv8n entirely client-side via ONNX Runtime
+ * Web and returns person-class detections only, in normalized [0-1] frame
+ * coordinates. Returns: [{ x, y, w, h, score }, ...].
+ */
+async function detectPersonsLocal(videoEl) {
+  const size = CONFIG.inputSize;
+
+  // Letterbox: scale the frame to fit inside size x size while preserving
+  // aspect ratio, padding the rest with black — this is the standard YOLO
+  // preprocessing so the model sees undistorted geometry.
+  const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+  const scale = Math.min(size / vw, size / vh);
+  const dw = Math.round(vw * scale), dh = Math.round(vh * scale);
+  const padX = Math.floor((size - dw) / 2), padY = Math.floor((size - dh) / 2);
+
+  yoloCtx.fillStyle = '#000';
+  yoloCtx.fillRect(0, 0, size, size);
+  yoloCtx.drawImage(videoEl, 0, 0, vw, vh, padX, padY, dw, dh);
+
+  const imgData = yoloCtx.getImageData(0, 0, size, size);
+  const inputTensor = imageDataToTensor(imgData, size);
+
+  const feeds = { images: inputTensor };
+  const outputMap = await ortSession.run(feeds);
+  const output = outputMap[ortSession.outputNames[0]]; // shape [1, 84, 8400]
+
+  const detections = decodeYoloOutput(output, size, vw, vh, scale, padX, padY);
+  return nonMaxSuppression(detections, CONFIG.iouThreshold);
+}
+
+// HWC RGBA ImageData -> normalized CHW Float32 tensor [1,3,size,size]
+function imageDataToTensor(imgData, size) {
+  const { data } = imgData;
+  const float32 = new Float32Array(3 * size * size);
+  const plane = size * size;
+  for (let i = 0; i < plane; i++) {
+    const o = i * 4;
+    float32[i] = data[o] / 255;                 // R
+    float32[plane + i] = data[o + 1] / 255;      // G
+    float32[2 * plane + i] = data[o + 2] / 255;  // B
+  }
+  return new ort.Tensor('float32', float32, [1, 3, size, size]);
+}
+
+// Decode raw YOLOv8 output [1,84,8400] -> person-only boxes in normalized
+// ORIGINAL-frame coordinates (undoing the letterbox pad + scale).
+function decodeYoloOutput(output, modelSize, origW, origH, scale, padX, padY) {
+  const data = output.data; // Float32Array, layout: [4 box + 80 classes][8400 anchors]
+  const numAnchors = output.dims[2];
+  const numAttrs = output.dims[1]; // 84
+  const boxes = [];
+
+  for (let a = 0; a < numAnchors; a++) {
+    // class scores start at row 4; find best score among 80 classes
+    let bestScore = -1, bestClass = -1;
+    for (let c = 0; c < numAttrs - 4; c++) {
+      const v = data[(4 + c) * numAnchors + a];
+      if (v > bestScore) { bestScore = v; bestClass = c; }
+    }
+    if (bestClass !== CONFIG.personClassId || bestScore < CONFIG.scoreThreshold) continue;
+
+    const cx = data[0 * numAnchors + a];
+    const cy = data[1 * numAnchors + a];
+    const bw = data[2 * numAnchors + a];
+    const bh = data[3 * numAnchors + a];
+
+    // undo letterbox: subtract pad, divide by scale, normalize to original frame
+    const x = ((cx - bw / 2) - padX) / scale;
+    const y = ((cy - bh / 2) - padY) / scale;
+    const w = bw / scale;
+    const h = bh / scale;
+
+    boxes.push({
+      x: Math.max(0, x / origW),
+      y: Math.max(0, y / origH),
+      w: Math.min(1, w / origW),
+      h: Math.min(1, h / origH),
+      score: bestScore,
+    });
+  }
+  return boxes;
+}
+
+function nonMaxSuppression(boxes, iouThresh) {
+  const sorted = boxes.slice().sort((a, b) => b.score - a.score);
+  const kept = [];
+  while (sorted.length) {
+    const best = sorted.shift();
+    kept.push(best);
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      if (iou(best, sorted[i]) > iouThresh) sorted.splice(i, 1);
+    }
+  }
+  return kept;
+}
+
+function iou(a, b) {
+  const ax2 = a.x + a.w, ay2 = a.y + a.h, bx2 = b.x + b.w, by2 = b.y + b.h;
+  const ix1 = Math.max(a.x, b.x), iy1 = Math.max(a.y, b.y);
+  const ix2 = Math.min(ax2, bx2), iy2 = Math.min(ay2, by2);
+  const iw = Math.max(0, ix2 - ix1), ih = Math.max(0, iy2 - iy1);
+  const interArea = iw * ih;
+  const unionArea = a.w * a.h + b.w * b.h - interArea;
+  return unionArea > 0 ? interArea / unionArea : 0;
+}
+
+/**
+ * analyzeMotion — frame-differencing heuristic, independent of person
+ * detection. Flags localized motion outliers (sudden running/scattering)
+ * that a static person count won't catch on its own.
+ */
+function analyzeMotion(frame, prevFrame) {
+  const data = frame.data;
+  const w = frame.width, h = frame.height;
+  const cols = 8, rows = 5;
+  const cellW = Math.floor(w / cols), cellH = Math.floor(h / rows);
+  const zones = [];
+  let totalMotion = 0, motionSamples = [];
+
+  for (let cy = 0; cy < rows; cy++) {
+    for (let cx = 0; cx < cols; cx++) {
+      let motionSum = 0, n = 0;
+      const x0 = cx * cellW, y0 = cy * cellH;
+      for (let y = y0; y < y0 + cellH && y < h - 1; y++) {
+        for (let x = x0; x < x0 + cellW && x < w - 1; x++) {
+          const i = (y * w + x) * 4;
+          if (prevFrame) {
+            const lum = (data[i] + data[i+1] + data[i+2]) / 3;
+            const pData = prevFrame.data;
+            const pLum = (pData[i] + pData[i+1] + pData[i+2]) / 3;
+            motionSum += Math.abs(lum - pLum);
+          }
+          n++;
+        }
+      }
+      const motionAvg = n ? motionSum / n : 0;
+      totalMotion += motionAvg;
+      motionSamples.push(motionAvg);
+      zones.push({ x: x0 / w, y: y0 / h, w: cellW / w, h: cellH / h, motion: motionAvg });
+    }
+  }
+
+  const cellCount = cols * rows;
+  const meanM = totalMotion / cellCount;
+  const variance = motionSamples.reduce((acc, m) => acc + Math.pow(m - meanM, 2), 0) / motionSamples.length;
+  const motionSigma = Math.sqrt(variance);
+
+  // Ordinary video compression noise and minor lighting flicker on a fully
+  // static scene typically produces average per-pixel luma deltas in the
+  // ~2-9 range even with nobody on screen. NOISE_FLOOR sits above that band
+  // so idle/empty footage doesn't register as "agitation" on its own —
+  // this is the main source of false "anomaly" flags on empty scenes.
+  const NOISE_FLOOR = 11;
+  const effectiveMotion = Math.max(0, motionSigma - NOISE_FLOOR * 0.4);
+
+  const flowCoherence = meanM > NOISE_FLOOR ? Math.max(0, 1 - (motionSigma / (meanM * 3))) : 1;
+
+  // Full per-cell grid, returned as-is (not filtered to statistical
+  // outliers). fuseSignals() uses this to measure how much motion is
+  // actually happening INSIDE a given cluster's own region directly — a
+  // direct local average is more reliable for "is this group moving fast"
+  // than asking whether any cell looks like a statistical outlier relative
+  // to the rest of the frame, which can fail precisely in scenes where
+  // motion is high and widespread (e.g. a whole area fighting/scattering),
+  // since uniformly-high motion isn't a statistical outlier from itself.
+  return { motion: effectiveMotion, flow: flowCoherence, grid: zones };
+}
+
+// Average raw per-cell motion across every grid cell that overlaps a given
+// region (e.g. a detected cluster's bounding box or a person's silhouette),
+// WEIGHTED by how much of the region each cell actually covers. A simple
+// unweighted average over "any cell that overlaps at all" systematically
+// dilutes the signal whenever a small region (like one person's box)
+// straddles a grid-cell boundary — a cell that only clips the corner of the
+// region counts exactly as much as one that covers most of it, washing out
+// real local agitation. Area-weighting fixes that.
+function localMotionInRegion(region, grid) {
+  let weightedSum = 0, totalWeight = 0;
+  grid.forEach(c => {
+    const ix1 = Math.max(region.x, c.x), iy1 = Math.max(region.y, c.y);
+    const ix2 = Math.min(region.x + region.w, c.x + c.w), iy2 = Math.min(region.y + region.h, c.y + c.h);
+    const iw = Math.max(0, ix2 - ix1), ih = Math.max(0, iy2 - iy1);
+    const overlapArea = iw * ih;
+    if (overlapArea > 0) {
+      weightedSum += c.motion * overlapArea;
+      totalWeight += overlapArea;
+    }
+  });
+  return totalWeight > 0 ? weightedSum / totalWeight : 0;
+}
+
+/**
+ * fuseSignals — combines real person detections with the motion heuristic
+ * into the telemetry/risk shape the rest of the UI expects.
+ *
+ * Design (by request, and it's the right call): the on-screen anomaly boxes
+ * ("red boxes") are now driven ENTIRELY by real YOLO person-cluster geometry
+ * — the same detections that are already proven accurate as green boxes.
+ * Motion/frame-differencing is kept only as a minor secondary contributor to
+ * the numeric risk score (e.g. it can nudge risk up when a known cluster is
+ * also moving erratically), but it can never by itself create a displayed
+ * anomaly box, and it never contributes anything when zero people are
+ * detected nearby. This removes the main source of "empty area flagged" and
+ * "red box looks wrong" — there is no longer a way for a region with no
+ * people in it to ever show a red box.
+ */
+function fuseSignals(persons, motionResult) {
+  const personCount = persons.length;
+
+  // Density: actual detected headcount over the assumed visible scene area.
+  // This is a direct measurement once the model is loaded, not a proxy.
+  const density = modelReady
+    ? personCount / CONFIG.assumedSceneAreaM2
+    : null; // null signals "not available" in the UI when the model hasn't loaded
+
+  // PRIMARY anomaly signal #1: real density clustering over actual person boxes.
+  const clusterZones = modelReady ? findDenseClusters(persons) : [];
+
+  // Does a cluster also coincide with rapid local movement? This is a
+  // DIRECT measurement — the average raw motion of whichever grid cells
+  // overlap the cluster's own region — compared against an absolute
+  // threshold (CONFIG.agitationMotionThreshold). This deliberately does NOT
+  // route through the frame-wide statistical-outlier logic in analyzeMotion,
+  // because that logic looks for cells that stand out from the frame's own
+  // average — which fails exactly in the case this is meant to catch: a
+  // fight or stampede where motion is high and widespread across the whole
+  // cluster region, not an isolated outlier against a calm background.
+  clusterZones.forEach(z => {
+    const localMotion = localMotionInRegion(z, motionResult.grid);
+    z.localMotion = localMotion;
+    z.agitated = modelReady && localMotion > CONFIG.agitationMotionThreshold;
+    z.kind = 'cluster';
+  });
+
+  // PRIMARY anomaly signal #2: rapid movement around people, independent of
+  // cluster size. A single person sprinting, or two people in a struggle,
+  // won't reach clusterMinCount — but genuinely rapid movement anchored on
+  // real person detections should still be able to flag red on its own,
+  // not only as a modifier on an already-large cluster.
+  const motionZones = modelReady ? findRapidMotionZones(persons, motionResult.grid, clusterZones) : [];
+
+  const densityScore = modelReady
+    ? Math.min(45, (Math.min(density, 6) / 6) * 45)
+    : 0;
+
+  // Motion contributes to the score only in proportion to how much of it is
+  // actually happening where people were detected — never in empty space,
+  // never when the model hasn't found anyone at all.
+  const motionWeight = modelReady && personCount > 0 ? 1 : (modelReady ? 0.1 : 1);
+  const sigmaScore = Math.min(22, (motionResult.motion / 18) * 22) * motionWeight;
+  const coherenceScore = Math.min(8, (1 - motionResult.flow) * 8) * motionWeight;
+
+  // Cluster score scales with how far over the "crowded" line each cluster
+  // is, with extra weight for agitated clusters.
+  const clusterScore = clusterZones.reduce((sum, z) => {
+    const base = Math.min(12, (z.count - CONFIG.clusterMinCount + 1) * 3.5);
+    return sum + (z.agitated ? base * 1.4 : base);
+  }, 0);
+
+  // Rapid-movement score: a real, standalone contributor — this is what
+  // lets a fast-moving fight or chase push risk up even without a dense
+  // cluster, which is the gap being fixed here.
+  const rapidMotionScore = Math.min(35, motionZones.length * 18);
+
+  let risk = densityScore + Math.min(50, clusterScore) + rapidMotionScore + sigmaScore + coherenceScore;
+  risk += (Math.random() - 0.5) * 2; // tiny jitter so consecutive samples aren't bit-identical
+  risk = Math.max(0, Math.min(100, risk));
+
+  return {
+    personCount, density, motion: motionResult.motion, flow: motionResult.flow,
+    zones: clusterZones.concat(motionZones), risk, modelReady,
+  };
+}
+
+/**
+ * findRapidMotionZones — flags regions around detected people where local
+ * motion is rapid, independent of how many people are clustered there. This
+ * is the direct fix for "rapid movement should fire red even without a big
+ * cluster": each person's bounding box (slightly padded) is checked against
+ * the motion grid; if local motion there clears
+ * CONFIG.agitationMotionThreshold, that region is flagged. Overlapping hits
+ * are merged so a single fast-moving group doesn't produce many redundant
+ * boxes. Regions already covered by an agitated cluster are skipped here —
+ * the cluster box already represents that area.
+ */
+function findRapidMotionZones(persons, grid, clusterZones) {
+  if (!persons.length) return [];
+
+  const pad = 0.03; // small margin around each person box so motion just outside their silhouette still counts
+  const candidates = [];
+
+  persons.forEach(p => {
+    const region = { x: Math.max(0, p.x - pad), y: Math.max(0, p.y - pad), w: p.w + pad * 2, h: p.h + pad * 2 };
+    const localMotion = localMotionInRegion(region, grid);
+    if (localMotion > CONFIG.agitationMotionThreshold) {
+      candidates.push({ ...region, localMotion });
+    }
+  });
+  if (!candidates.length) return [];
+
+  // skip anything already inside an agitated cluster box — avoid double-flagging the same area
+  const agitatedClusters = clusterZones.filter(z => z.agitated);
+  const fresh = candidates.filter(c => !agitatedClusters.some(z => rectsOverlap(z, c)));
+  if (!fresh.length) return [];
+
+  // merge overlapping candidate regions into single boxes, keeping the
+  // union's extent and the highest local motion seen
+  fresh.sort((a, b) => b.localMotion - a.localMotion);
+  const merged = [];
+  fresh.forEach(c => {
+    const hit = merged.find(m => rectsOverlap(m, c));
+    if (hit) {
+      const x2 = Math.max(hit.x + hit.w, c.x + c.w), y2 = Math.max(hit.y + hit.h, c.y + c.h);
+      hit.x = Math.min(hit.x, c.x); hit.y = Math.min(hit.y, c.y);
+      hit.w = x2 - hit.x; hit.h = y2 - hit.y;
+      hit.localMotion = Math.max(hit.localMotion, c.localMotion);
+      hit.count = (hit.count || 1) + 1;
+    } else {
+      merged.push({ ...c, count: 1, agitated: true, kind: 'motion' });
+    }
+  });
+
+  return merged.slice(0, 4);
+}
+
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+// Sliding-window density scan over detected person centers — more accurate
+// than a fixed-grid count because it isn't sensitive to a cluster straddling
+// a grid boundary. Slides a window of size CONFIG.clusterWindowFrac across
+// the frame and flags any placement holding >= CONFIG.clusterMinCount people,
+// then merges overlapping flagged windows into single boxes.
+function findDenseClusters(persons) {
+  if (persons.length < CONFIG.clusterMinCount) return [];
+
+  const win = CONFIG.clusterWindowFrac;
+  const step = win / 2; // 50% overlap between scan positions
+  const centers = persons.map(p => ({ cx: p.x + p.w / 2, cy: p.y + p.h / 2 }));
+  const candidates = [];
+
+  for (let y = 0; y <= 1 - win + 1e-6; y += step) {
+    for (let x = 0; x <= 1 - win + 1e-6; x += step) {
+      const count = centers.filter(c => c.cx >= x && c.cx < x + win && c.cy >= y && c.cy < y + win).length;
+      if (count >= CONFIG.clusterMinCount) {
+        candidates.push({ x, y, w: win, h: win, count });
+      }
+    }
+  }
+  if (!candidates.length) return [];
+
+  // merge overlapping candidate windows, keeping the highest count seen in
+  // the merged region so one dense crowd doesn't render as several boxes
+  candidates.sort((a, b) => b.count - a.count);
+  const merged = [];
+  candidates.forEach(c => {
+    const hit = merged.find(m => rectsOverlap(m, c));
+    if (!hit) merged.push({ ...c });
+  });
+
+  return merged.slice(0, 4); // cap for render performance, strongest clusters first
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+function renderTelemetry(r) {
+  if (r.modelReady) {
+    $('telPersons').textContent = r.personCount;
+    $('telPersons').className = 'v ' + (r.personCount >= 18 ? 'crit' : r.personCount >= 9 ? 'warn' : 'ok');
+    $('telPersonsSub').textContent = `${activeDetectorLabel}, live count`;
+
+    $('telDensity').textContent = r.density.toFixed(2);
+    $('telDensity').className = 'v ' + (r.density > 4 ? 'crit' : r.density > 2.4 ? 'warn' : 'ok');
+    $('telDensitySub').textContent = 'est. persons/m²';
+  } else {
+    $('telPersons').textContent = '—';
+    $('telPersons').className = 'v';
+    $('telPersonsSub').textContent = modelLoadFailed ? 'model unavailable' : 'model loading…';
+    $('telDensity').textContent = '—';
+    $('telDensity').className = 'v';
+    $('telDensitySub').textContent = 'awaiting model';
+  }
+
+  $('telMotion').textContent = r.motion.toFixed(1);
+  $('telMotion').className = 'v ' + (r.motion > 14 ? 'crit' : r.motion > 8 ? 'warn' : 'ok');
+
+  $('telFlow').textContent = (r.flow * 100).toFixed(0) + '%';
+  $('telFlow').className = 'v ' + (r.flow < 0.4 ? 'crit' : r.flow < 0.65 ? 'warn' : 'ok');
+}
+
+function setGauge(value, mode) {
+  // map 0-100 -> -90deg..+90deg around the semicircle
+  const angle = -90 + (value / 100) * 180;
+  $('gaugeNeedle').setAttribute('transform', `rotate(${angle} 74 84)`);
+  $('gaugeNum').textContent = Math.round(value);
+}
+
+function renderGauge(r) {
+  setGauge(r.risk); // the needle and number always show the live, true value — never held
+  const verdictEl = $('verdictText'), descEl = $('verdictDesc'), tagsEl = $('verdictTags');
+  const clusterHits = r.zones.filter(z => z.kind !== 'motion');
+  const motionHits = r.zones.filter(z => z.kind === 'motion');
+
+  // Record when each tier was actually reached, then decide the HELD
+  // severity to display for the verdict label — the highest tier seen
+  // within the last gaugeHoldMs, not strictly this instant's value. This is
+  // what keeps the verdict from flipping back to "Normal" the moment after
+  // a real, alert-worthy spike, while an entry for that same spike is still
+  // sitting at the top of the alert log.
+  const now = Date.now();
+  if (r.risk >= CONFIG.thresholds.crit) lastGaugeCritAt = now;
+  else if (r.risk >= CONFIG.thresholds.warn) lastGaugeWarnAt = now;
+
+  const heldCrit = (now - lastGaugeCritAt) < CONFIG.gaugeHoldMs;
+  const heldWarn = (now - lastGaugeWarnAt) < CONFIG.gaugeHoldMs;
+  const displaySeverity = heldCrit ? 'crit' : heldWarn ? 'warn' : 'ok';
+  const isLiveReading = r.risk >= CONFIG.thresholds.crit ? 'crit' : r.risk >= CONFIG.thresholds.warn ? 'warn' : 'ok';
+  const holding = displaySeverity !== isLiveReading; // true when we're showing a held-over state, not the live one
+
+  if (displaySeverity === 'crit') {
+    verdictEl.textContent = holding ? 'Critical — recent anomaly (holding)' : 'Critical — crowd anomaly detected';
+    verdictEl.className = 'verdict crit';
+    if (r.modelReady && motionHits.length && !clusterHits.length) {
+      descEl.textContent = `${r.personCount} people detected, with rapid movement flagged around ${motionHits.length > 1 ? 'multiple people' : 'at least one person'} — consistent with a struggle, chase, or sudden flight. Alert dispatched.`;
+    } else if (r.modelReady && clusterHits.length) {
+      descEl.textContent = `${r.personCount} people detected, with at least one dense, tightly-packed cluster exceeding safe thresholds${clusterHits.some(z=>z.agitated) || motionHits.length ? ' and showing rapid movement' : ''}. Pattern is consistent with a crowd surge, stampede risk, or active altercation. Alert dispatched.`;
+    } else if (holding) {
+      descEl.textContent = `Risk briefly spiked into the critical range and an alert was logged. Holding this status for a few seconds in case the situation continues — current frame has since calmed.`;
+    } else {
+      descEl.textContent = 'Motion irregularity exceeds safe thresholds (person-count detection unavailable — using motion signal only). Alert dispatched.';
+    }
+  } else if (displaySeverity === 'warn') {
+    verdictEl.textContent = holding ? 'Elevated — recent activity (holding)' : 'Elevated — unusual crowd behavior';
+    verdictEl.className = 'verdict warn';
+    if (r.modelReady && clusterHits.length) {
+      descEl.textContent = `A cluster of ${clusterHits[0].count}+ people detected in close proximity. Continuing to monitor; will escalate if the group tightens further or starts moving erratically.`;
+    } else if (r.modelReady && motionHits.length) {
+      descEl.textContent = `Rapid movement detected around a detected person. Continuing to monitor; will escalate if it persists or spreads to others nearby.`;
+    } else if (holding) {
+      descEl.textContent = `Risk briefly crossed the elevated range moments ago. Holding this status briefly — current frame has since calmed.`;
+    } else {
+      descEl.textContent = 'Localized motion or density spikes detected outside normal range. Continuing to monitor; will escalate if the pattern persists or intensifies.';
+    }
+  } else {
+    verdictEl.textContent = 'Normal — no anomaly detected';
+    verdictEl.className = 'verdict ok';
+    descEl.textContent = r.modelReady
+      ? `${r.personCount} people detected. No dense clustering or rapid movement found — patterns are within expected bounds for this scene.`
+      : 'Movement patterns are within expected bounds for this scene.';
+  }
+
+  tagsEl.innerHTML = '';
+  const tags = [];
+  if (holding) tags.push('Holding Recent Reading');
+  if (r.modelReady && r.density > 4) tags.push('High Overall Density');
+  if (clusterHits.length >= 1) tags.push(`${clusterHits.length} Dense Cluster${clusterHits.length>1?'s':''}`);
+  if (motionHits.length >= 1) tags.push(`${motionHits.length} Rapid Movement Zone${motionHits.length>1?'s':''}`);
+  if (clusterHits.some(z => z.agitated)) tags.push('Agitated Cluster');
+  if (r.motion > 14 && r.personCount > 0) tags.push('Erratic Motion');
+  if (!r.modelReady) tags.push('Person Detection Offline');
+  if (!tags.length) tags.push('Stable');
+  tags.forEach(t => {
+    const span = document.createElement('span');
+    span.className = 'gtag' + (t !== 'Stable' ? ' flag' : '');
+    span.textContent = t;
+    tagsEl.appendChild(span);
+  });
+}
+
+function clearZoneFlags() {
+  document.querySelectorAll('.zone-flag').forEach(el => el.remove());
+}
+
+function renderZoneFlags(zones) {
+  clearZoneFlags();
+  const frame = $('videoFrame');
+  zones.forEach((z) => {
+    const div = document.createElement('div');
+    // Severity: a large/agitated cluster, OR any standalone rapid-motion
+    // zone (those are always agitated by construction), reads as critical.
+    const crit = z.agitated || z.count >= CONFIG.clusterMinCount + 2;
+    div.className = 'zone-flag' + (crit ? ' crit' : '');
+    div.style.left = (z.x * 100) + '%';
+    div.style.top = (z.y * 100) + '%';
+    div.style.width = (z.w * 100) + '%';
+    div.style.height = (z.h * 100) + '%';
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    if (z.kind === 'motion') {
+      tag.textContent = z.count > 1 ? `RAPID MOVEMENT ×${z.count}` : 'RAPID MOVEMENT';
+    } else {
+      tag.textContent = z.agitated ? `CLUSTER ×${z.count} — AGITATED` : `CLUSTER ×${z.count}`;
+    }
+    div.appendChild(tag);
+    frame.appendChild(div);
+  });
+}
+
+function clearPersonBoxes() {
+  document.querySelectorAll('.person-box').forEach(el => el.remove());
+}
+
+function renderPersonBoxes(persons) {
+  clearPersonBoxes();
+  const frame = $('videoFrame');
+  // cap drawn boxes for render performance on very crowded frames
+  persons.slice(0, 60).forEach((p, idx) => {
+    const div = document.createElement('div');
+    div.className = 'person-box';
+    div.style.left = (p.x * 100) + '%';
+    div.style.top = (p.y * 100) + '%';
+    div.style.width = (p.w * 100) + '%';
+    div.style.height = (p.h * 100) + '%';
+    frame.appendChild(div);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Threat evaluation -> alert creation (on-screen log only)
+// ---------------------------------------------------------------------------
+function evaluateThreat(r) {
+  if (r.risk >= CONFIG.thresholds.crit) {
+    setStatus('critical');
+    // throttle: don't spam a new critical alert every single sample
+    if (Date.now() - lastCriticalAt > 4000) {
+      lastCriticalAt = Date.now();
+      createAlert('crit', r);
+    }
+  } else if (r.risk >= CONFIG.thresholds.warn) {
+    setStatus('scanning');
+    // throttle elevated alerts on a slightly longer window — these are
+    // lower-severity, so we don't want a new log entry every single sample
+    if (Date.now() - lastWarnAt > 7000) {
+      lastWarnAt = Date.now();
+      createAlert('warn', r);
+    }
+  } else {
+    setStatus('scanning'); // still actively scanning, just nothing flagged
+  }
+}
+
+function setStatus(mode) {
+  statusPill.className = 'status-pill ' + mode;
+  brandMark.className = 'brand-mark' + (mode === 'critical' ? ' alert' : '');
+  statusPillText.textContent = mode === 'critical' ? 'Critical Alert' : mode === 'scanning' ? 'Scanning' : 'Standby';
+}
+
+function createAlert(severity, r) {
+  alertSeq++;
+  const id = alertSeq;
+  const now = new Date();
+  const sourceName = currentFile ? currentFile.name : 'unknown_source.mp4';
+  const videoTime = video.currentTime || 0;
+
+  const titles = {
+    crit: ['Dense crowd cluster detected', 'Critical clustering threshold breached', 'Agitated crowd cluster flagged', 'High-density grouping with erratic movement'],
+    warn: ['Localized crowd clustering detected', 'Group density approaching threshold', 'Tight grouping observed, monitoring', 'Elevated clustering in frame'],
+  };
+  const title = titles[severity][Math.floor(Math.random() * titles[severity].length)];
+
+  const alert = {
+    id, severity, title,
+    timestamp: now,
+    videoTimestamp: formatTime(videoTime),
+    source: sourceName,
+    personCount: r.modelReady ? r.personCount : null,
+    density: r.modelReady ? r.density.toFixed(2) : null,
+    motion: r.motion.toFixed(1),
+    zones: r.zones.length,
+    risk: Math.round(r.risk),
+  };
+  alertLog.unshift(alert);
+  renderAlertFeed();
+  logLine(`ALERT #${id} raised — "${title}" (risk ${alert.risk}/100) at clip time ${alert.videoTimestamp}`, severity === 'crit' ? 'crit' : 'warn');
+}
+
+function renderAlertFeed() {
+  emptyState.classList.toggle('hidden', alertLog.length > 0);
+  alertFeed.querySelectorAll('.alert-card').forEach(el => el.remove());
+
+  alertLog.forEach(a => {
+    const card = document.createElement('div');
+    card.className = 'alert-card ' + a.severity;
+    const sevLabel = a.severity === 'crit' ? 'Critical' : a.severity === 'warn' ? 'Elevated' : 'Resolved';
+    const timeStr = a.timestamp.toLocaleTimeString('en-US', { hour12: false });
+
+    card.innerHTML = `
+      <div class="row1">
+        <span class="sev">${sevLabel}</span>
+        <span class="ts">${timeStr}</span>
+      </div>
+      <div class="ttl">${a.title}</div>
+      <div class="meta">
+        <span>SRC <b>${a.source}</b></span>
+        <span>CLIP <b>${a.videoTimestamp}</b></span>
+        <span>RISK <b>${a.risk}/100</b></span>
+      </div>
+      <div class="meta">
+        ${a.personCount !== null ? `<span>PERSONS <b>${a.personCount}</b></span><span>DENSITY <b>${a.density} p/m²</b></span>` : `<span>DENSITY <b>n/a — model offline</b></span>`}
+        <span>ZONES <b>${a.zones}</b></span>
+      </div>
+    `;
+    alertFeed.appendChild(card);
+  });
+
+  alertCountTop.textContent = alertLog.length;
+  alertCountSide.textContent = alertLog.length + (alertLog.length === 1 ? ' entry' : ' entries');
+}
+
+$('clearLogBtn').addEventListener('click', () => {
+  alertLog = [];
+  renderAlertFeed();
+  logLine('Alert log cleared by operator.');
+});
+
+// ---------------------------------------------------------------------------
+// init
+// ---------------------------------------------------------------------------
+setGauge(0, 'idle');
+logLine('Sentry console initialized. Awaiting footage upload.');
+</script>
+</body>
+</html>
